@@ -223,14 +223,17 @@ def shift_qspike(unshifted_qspike:np.ndarray, trial_shifts: np.ndarray) -> np.nd
             corrected. Only spike remaining on the original [0, 4] interval are kept.
     """
 
-    qpspike = unshifted_qspike
+    qpspike = unshifted_qspike # Copy the unshifted data
 
-    for trial, shift in enumerate(trial_shifts, start=1):
+    for trial, shift in enumerate(trial_shifts, start=1): # For each trial shift
 
-        trial_rows = np.where(unshifted_qspike[:, 0] == trial)[0]
-        trial_coords = (trial_rows, np.ones((trial_rows.shape[0],), dtype=int))
-        qpspike[trial_coords] = qpspike[trial_coords] + shift
+        trial_rows = np.where(unshifted_qspike[:, 0] == trial)[0] # identify rows corresponding to the trial for the current shift
+        trial_coords = (trial_rows, np.ones((trial_rows.shape[0],), dtype=int)) # An equally-sized array of ones specifies spots in column 1 to shift (spike times)
+        qpspike[trial_coords] = qpspike[trial_coords] + shift # Apply the shift
     
+    off_interval_rows = np.where((qpspike[:, 1] < 0) | (qpspike[:, 1] > 4))[0] # Rows where the spike time is out of the interval [0, 4]
+    qpspike = np.delete(qpspike, off_interval_rows, axis=0) # delete all rows with spike data outside of interval [0, 4]
+
     return qpspike
 
 def dominant_frequency_analysis(
