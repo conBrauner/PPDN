@@ -130,12 +130,12 @@ def average_theta_freq(theta_x: np.ndarray, theta_y: np.ndarray) -> float:
         theta_freq = np.NAN
     return theta_freq
 
-def prep_pyr_qspike(qspike: np.ndarray, intspike: np.ndarray, pyrspike: np.ndarray) -> tuple:
+def prep_pyr_qpspike(qpspike: np.ndarray, intspike: np.ndarray, pyrspike: np.ndarray) -> tuple:
 
     """Ensure spike-aligned data is organized appropriately and extract precursor constructs.
 
     Args:
-        qspike: (sum(num_trials[pyr]), 3) array, with trial index in first column, spike times in 
+        qpspike: (sum(num_trials[pyr]), 3) array, with trial index in first column, spike times in 
             second column and neuron label in third column. Trials were all time-shifted to satisfy 
             maximum likelihood estimation for a single pyr neuron. 
         intspike: (sum(num_spikes[int]), 2) array, with interneuron label in first column and spike
@@ -156,38 +156,38 @@ def prep_pyr_qspike(qspike: np.ndarray, intspike: np.ndarray, pyrspike: np.ndarr
 
     """
 
-    # Remove interneuron data from qspike
+    # Remove interneuron data from qpspike
     interneuron_indices = []
-    for i, label in enumerate(qspike[:, 2]):
+    for i, label in enumerate(qpspike[:, 2]):
         if label in intspike[:, 0]:
             interneuron_indices.append(i)
-    pyr_qspike = np.delete(qspike, interneuron_indices, axis=0) 
+    pyr_qpspike = np.delete(qpspike, interneuron_indices, axis=0) 
 
     # Notify on missing pyramidal data
     missing_pyr = []
     all_pyr_labels = np.array(list(set(pyrspike[:, 0])))
-    pyr_com_neuron_labels = np.array(list(set(pyr_qspike[:, 2])))
+    pyr_com_neuron_labels = np.array(list(set(pyr_qpspike[:, 2])))
     for label in all_pyr_labels:
         if label not in pyr_com_neuron_labels:
             missing_pyr.append(label)
-    print(f'Pyramidal neurons {missing_pyr} absent from qspike.')
+    print(f'Pyramidal neurons {missing_pyr} absent from qpspike.')
 
-    # Ensure qspike data is sorted appropriately and construct relevant label vectors
-    if not all(np.diff(pyr_qspike[:, 2]) >= 0): # Ensure neuron labels are in ascending order
-        raise Exception('qspike pyramidal neuron labels are not in ascending order.')
+    # Ensure qpspike data is sorted appropriately and construct relevant label vectors
+    if not all(np.diff(pyr_qpspike[:, 2]) >= 0): # Ensure neuron labels are in ascending order
+        raise Exception('qpspike pyramidal neuron labels are not in ascending order.')
     
-    # Iterate over each unique pyramidal label appearing in qspike
+    # Iterate over each unique pyramidal label appearing in qpspike
     pyr_num_trials = [] # Used to construct trial-separated label maps 
     pyr_com_trials = [] # Contains all spike times for one neuron across trials
     for label in pyr_com_neuron_labels: 
         
         # Extract all rows with corresponding label
-        neuron_data = pyr_qspike[np.where(pyr_qspike[:, 2] == label)] 
+        neuron_data = pyr_qpspike[np.where(pyr_qpspike[:, 2] == label)] 
 
         # Ensure trials are ascending
         trial_FOD = np.diff(neuron_data[:, 0]) # Intermediate parameter: trial label first order derivative
         if not np.all(trial_FOD >= 0):
-            raise Exception(f'qspike trials are not in ascending order for neuron: {label}')
+            raise Exception(f'qpspike trials are not in ascending order for neuron: {label}')
 
         pyr_num_trials.append(len(set(neuron_data[:, 0]))) 
         pyr_com_trials.append(np.sort(neuron_data[:, 1])) 
@@ -198,16 +198,40 @@ def prep_pyr_qspike(qspike: np.ndarray, intspike: np.ndarray, pyrspike: np.ndarr
         pyr_sep_neuron_labels.extend([pyr_com_neuron_labels[label_i] for k in range(num_trials)])
     
     # Create vector to map index in trial-separated data to trial label
-    trial_labels = pyr_qspike[:, 0]
+    trial_labels = pyr_qpspike[:, 0]
     selection = np.ones(trial_labels.shape[0], dtype=bool)
     selection[1:] = trial_labels[1:] != trial_labels[:-1]
     pyr_sep_trial_labels = trial_labels[selection]
 
     # Create vector of trial-separated data
-    trial_partition_indices = partition_spikes(pyr_qspike)
-    pyr_sep_trials = separate_neuron_data(trial_partition_indices, pyr_qspike)
+    trial_partition_indices = partition_spikes(pyr_qpspike)
+    pyr_sep_trials = separate_neuron_data(trial_partition_indices, pyr_qpspike)
 
     return pyr_com_trials, pyr_sep_trials, pyr_com_neuron_labels, pyr_sep_neuron_labels, pyr_sep_trial_labels
+
+def shift_qspike(unshifted_qspike:np.ndarray, trial_shifts: np.ndarray) -> np.ndarray:
+
+    """Shift qspike to create qpspike satisfying maximum likelihood estimate.
+
+    Args:
+        unshifted_qspike: first column indicates trial number, second is spike times (s), third is
+            neuron label.
+        trial_shifts: vector of time shifts (in s) to maximize likelihood estimate for spike times
+            over a 4 second trial window -- index corresponds to trial number.
+    Returns:
+        qpspike: Data structure is identical to unshifted qspike, but with spike time values
+            corrected. Only spike remaining on the original [0, 4] interval are kept.
+    """
+
+    qpspike = unshifted_qspike
+
+    for trial, shift in enumerate(trial_shifts, start=1):
+
+        trial_rows = np.where(unshifted_qspike[:, 0] == trial)[0]
+        trial_coords = (trial_rows, np.ones((trial_rows.shape[0],), dtype=int))
+        qpspike[trial_coords] = qpspike[trial_coords] + shift
+    
+    return qpspike
 
 def dominant_frequency_analysis(
     kde_y: np.ndarray,
