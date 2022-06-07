@@ -9,12 +9,21 @@ from src.visualization.data_vis import *
 
 def partition_spikes(spike_data):
     
-    neuron_labels = spike_data[:, 0] # The first column indicates numeric neuron label
-    partition_indices = np.diff(neuron_labels) # Intermediate variable
+    trial_labels = spike_data[:, 0] # The first column indicates numeric trial label
+    neuron_labels = spike_data[:, 2] # The third column indicates numeric neuron label
+
+    neuron_partitions = np.diff(neuron_labels) # Intermediate variable
+    neuron_partitions = np.where(neuron_partitions != 0)[0] + 1 # Incrementing label indicates a partition
+
+    trial_partitions = np.diff(trial_labels) # Intermediate variable
+    trial_partitions = np.where(trial_partitions != 0)[0] + 1 # Incrementing label indicates partition
     
-    partition_indices = np.where(partition_indices != 0)[0] + 1 # Incrementing label indicates partition
-    
-    return partition_indices
+    for partition_i in neuron_partitions:
+        if partition_i not in trial_partitions:
+            trial_partitions = np.concatenate((trial_partitions, np.array([partition_i])), axis=0)
+    trial_partitions = np.sort(trial_partitions)
+
+    return trial_partitions
 
 def separate_neuron_data(partition_indices, spike_data):
 
@@ -199,12 +208,15 @@ def prep_pyr_qpspike(qpspike: np.ndarray, intspike: np.ndarray, pyrspike: np.nda
     
     # Create vector to map index in trial-separated data to trial label
     trial_labels = pyr_qpspike[:, 0]
-    selection = np.ones(trial_labels.shape[0], dtype=bool)
-    selection[1:] = trial_labels[1:] != trial_labels[:-1]
-    pyr_sep_trial_labels = trial_labels[selection]
+    # selection = np.ones(trial_labels.shape[0], dtype=bool)
+    # selection[1:] = trial_labels[1:] != trial_labels[:-1]
+    # pyr_sep_trial_labels = trial_labels[selection]
 
     # Create vector of trial-separated data
     trial_partition_indices = partition_spikes(pyr_qpspike)
+    alt_pyr_sep_trial_labels = trial_labels[trial_partition_indices - 1]
+    pyr_sep_trial_labels = np.concatenate((alt_pyr_sep_trial_labels, np.array([trial_labels[-1]])), axis=0)
+
     pyr_sep_trials = separate_neuron_data(trial_partition_indices, pyr_qpspike)
 
     return pyr_com_trials, pyr_sep_trials, pyr_com_neuron_labels, pyr_sep_neuron_labels, pyr_sep_trial_labels
@@ -333,7 +345,7 @@ def compute_PRQ(
         )
 
     # Unwrap the phase to prevent reset effects
-    theta_phase = np.unwrap(theta_phase, discont=None, period=2*np.pi)
+    # theta_phase = np.unwrap(theta_phase, discont=None, period=2*np.pi)
 
     # Approximate spike phase central tendency (CT) on each cycle -- 0 indicates undefined
     cycle_phi_CT = np.zeros((cycle_boundary_i.shape[0] + 1,)) # For n boundaries, there are n+1 cycles
